@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Configuration;
 using Microsoft.AspNet.Identity;
 using Microsoft.AspNet.Identity.Owin;
 using Microsoft.Owin;
@@ -45,16 +46,18 @@ namespace neilhighley_fb
             // This is similar to the RememberMe option when you log in.
             app.UseTwoFactorRememberBrowserCookie(DefaultAuthenticationTypes.TwoFactorRememberBrowserCookie);
 
-            // Uncomment the following lines to enable logging in with third party login providers
-            //app.UseMicrosoftAccountAuthentication(
-            //    clientId: "",
-            //    clientSecret: "");
-
-            //app.UseTwitterAuthentication(
-            //   consumerKey: "",
-            //   consumerSecret: "");
-
             
+            /* Facebook Auth is in separate non-git config file
+             * <?xml version="1.0"?>
+              <appSettings>
+                <add key="Facebook:AppId" value="xxxxxx" />
+                <add key="Facebook:AppSecret" value="xxxxxx" />
+                <add key="Facebook:AppNamespace" value="" />
+              </appSettings>
+            */
+            app.UseFacebookAuthentication(
+                appId: ConfigurationManager.AppSettings["Facebook:AppId"].ToString(),
+                appSecret: ConfigurationManager.AppSettings["Facebook:AppSecret"].ToString());
         }
     }
 }
