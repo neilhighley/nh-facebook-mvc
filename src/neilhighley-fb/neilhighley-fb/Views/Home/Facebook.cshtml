@@ -1,0 +1,22 @@
+﻿@using neilhighley_fb.Models
+@model neilhighley_fb.Models.FacebookUserModel
+
+@{
+    ViewBag.Title = "Your facebook page";
+    ViewBag.Message = "Welcome";
+}
+
+<h2>Your facebook page</h2>
+<p>@Model.Name</p>
+<div>
+    Yer pals
+    <ul>
+        @foreach(var f in Model.Friends.Take(5))
+        {
+            <li>
+                <div>@f.Name</div>
+                <div>@f.Profile</div>
+            </li>
+        }
+    </ul>
+</div>
