@@ -11,12 +11,29 @@
 <div>
     Yer pals
     <ul>
-        @foreach(var f in Model.Friends.Take(5))
+        @if (Model.Friends != null)
         {
-            <li>
-                <div>@f.Name</div>
-                <div>@f.Profile</div>
-            </li>
+            foreach (var f in Model.Friends.Take(20))
+            {
+                <li>
+                    <img src="@f.Image" title="@f.Name"/>
+                    <div>@f.Name</div>
+                </li>
+            }
+        }
+    </ul>
+    <hr/>
+    Yer mumblings
+    <ul>
+        @if (Model.Statuses != null)
+        {
+            foreach (StatusModel s in Model.Statuses.Take(20))
+            {
+                <li>
+                    <div>@s.Message</div>
+                    <div>@s.Updated</div>
+                </li>
+            }
         }
     </ul>
 </div>

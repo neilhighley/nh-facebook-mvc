@@ -9,12 +9,16 @@ using Microsoft.AspNet.Identity;
 using Microsoft.AspNet.Identity.Owin;
 using Microsoft.Owin.Security;
 using neilhighley_fb.Models;
+using NLog;
+using NLog.Fluent;
 
 namespace neilhighley_fb.Controllers
 {
     [Authorize]
     public class AccountController : Controller
     {
+        private static Logger logger = LogManager.GetCurrentClassLogger();
+
         private ApplicationSignInManager _signInManager;
         private ApplicationUserManager _userManager;
 
@@ -72,7 +76,7 @@ namespace neilhighley_fb.Controllers
             {
                 return View(model);
             }
-
+            logger.Debug("Login");
             // This doesn't count login failures towards account lockout
             // To enable password failures to trigger account lockout, change to shouldLockout: true
             var result = await SignInManager.PasswordSignInAsync(model.Email, model.Password, model.RememberMe, shouldLockout: false);
@@ -96,6 +100,7 @@ namespace neilhighley_fb.Controllers
         [AllowAnonymous]
         public async Task<ActionResult> VerifyCode(string provider, string returnUrl, bool rememberMe)
         {
+            logger.Debug("VerifyCode");
             // Require that the user has already logged in via username/password or external login
             if (!await SignInManager.HasBeenVerifiedAsync())
             {
@@ -111,6 +116,8 @@ namespace neilhighley_fb.Controllers
         [ValidateAntiForgeryToken]
         public async Task<ActionResult> VerifyCode(VerifyCodeViewModel model)
         {
+            logger.Debug("VerifyCode Model");
+            logger.Debug(model);
             if (!ModelState.IsValid)
             {
                 return View(model);
@@ -287,6 +294,7 @@ namespace neilhighley_fb.Controllers
         [AllowAnonymous]
         public async Task<ActionResult> SendCode(string returnUrl, bool rememberMe)
         {
+            logger.Debug("SendCode:"+returnUrl);
             var userId = await SignInManager.GetVerifiedUserIdAsync();
             if (userId == null)
             {
@@ -304,6 +312,8 @@ namespace neilhighley_fb.Controllers
         [ValidateAntiForgeryToken]
         public async Task<ActionResult> SendCode(SendCodeViewModel model)
         {
+            logger.Debug("SendCode model");
+            logger.Debug(model);
             if (!ModelState.IsValid)
             {
                 return View();
@@ -322,7 +332,11 @@ namespace neilhighley_fb.Controllers
         [AllowAnonymous]
         public async Task<ActionResult> ExternalLoginCallback(string returnUrl)
         {
-            var loginInfo = await AuthenticationManager.GetExternalLoginInfoAsync();
+            logger.Debug("ExternalLoginCallback:"+returnUrl);
+            var loginInfo = await AuthenticationManager_GetExternalLoginInfoAsync_Workaround();//AuthenticationManager.GetExternalLoginInfoAsync();
+            logger.Debug(new {loginInfo = loginInfo});
+
+
             if (loginInfo == null)
             {
                 return RedirectToAction("Login");
@@ -330,6 +344,17 @@ namespace neilhighley_fb.Controllers
 
             // Sign in the user with this external login provider if the user already has a login
             var result = await SignInManager.ExternalSignInAsync(loginInfo, isPersistent: false);
+            var nresult = await AuthenticationManager.AuthenticateAsync(DefaultAuthenticationTypes.ExternalCookie);
+            
+            logger.Debug(
+            new {
+                ResultFromCallback=result,
+                ReturnUrl=returnUrl,
+                Claims = nresult.Identity.Claims,
+                loginInfo=loginInfo
+            });
+            
+            
             switch (result)
             {
                 case SignInStatus.Success:
@@ -347,6 +372,29 @@ namespace neilhighley_fb.Controllers
             }
         }
 
+        private async Task<ExternalLoginInfo> AuthenticationManager_GetExternalLoginInfoAsync_Workaround()
+        {
+            ExternalLoginInfo loginInfo = null;
+
+            var result = await AuthenticationManager.AuthenticateAsync(DefaultAuthenticationTypes.ExternalCookie);
+
+            if (result != null && result.Identity != null)
+            {
+                var idClaim = result.Identity.FindFirst(ClaimTypes.NameIdentifier);
+                if (idClaim != null)
+                {
+                    Session["access_token"] = result.Identity.FindFirst("urn:facebook:access_token");
+                    loginInfo = new ExternalLoginInfo()
+                    {
+                        DefaultUserName = result.Identity.Name == null ? "" : result.Identity.Name.Replace(" ", ""),
+                        Login = new UserLoginInfo(idClaim.Issuer, idClaim.Value),
+                        ExternalIdentity = result.Identity
+                    };
+                }
+            }
+            return loginInfo;
+        }
+
         //
         // POST: /Account/ExternalLoginConfirmation
         [HttpPost]
@@ -354,6 +402,11 @@ namespace neilhighley_fb.Controllers
         [ValidateAntiForgeryToken]
         public async Task<ActionResult> ExternalLoginConfirmation(ExternalLoginConfirmationViewModel model, string returnUrl)
         {
+
+            logger.Debug(new{Name="ExternalLoginConfirmation",
+                Model=model,
+                returnUrl=returnUrl});
+
             if (User.Identity.IsAuthenticated)
             {
                 return RedirectToAction("Index", "Manage");
@@ -367,6 +420,9 @@ namespace neilhighley_fb.Controllers
                 {
                     return View("ExternalLoginFailure");
                 }
+
+                ExternalLoginData externalLogin = ExternalLoginData.FromIdentity(User.Identity as ClaimsIdentity);
+
                 var user = new ApplicationUser
                 {
                     UserName = model.Email, 
@@ -374,7 +430,18 @@ namespace neilhighley_fb.Controllers
                     BirthDate = model.BirthDate,
                     HomeTown = model.HomeTown
                 };
+
+                logger.Debug(new
+                {
+                    Name="ExternalLoginConfirmation",
+                    User=user,
+                    externalLogin = externalLogin
+                });
+
                 var result = await UserManager.CreateAsync(user);
+                
+                logger.Debug(result);
+                logger.Debug(user);
                 if (result.Succeeded)
                 {
                     result = await UserManager.AddLoginAsync(user.Id, info.Login);
@@ -391,6 +458,8 @@ namespace neilhighley_fb.Controllers
             return View(model);
         }
 
+      
+
         //
         // POST: /Account/LogOff
         [HttpPost]
@@ -406,6 +475,7 @@ namespace neilhighley_fb.Controllers
         [AllowAnonymous]
         public ActionResult ExternalLoginFailure()
         {
+            logger.Debug("ExternalLoginFailure");
             return View();
         }
 
@@ -486,6 +556,43 @@ namespace neilhighley_fb.Controllers
                 context.HttpContext.GetOwinContext().Authentication.Challenge(properties, LoginProvider);
             }
         }
+
+        private class ExternalLoginData
+        {
+            public string LoginProvider { get; set; }
+            public string ProviderKey { get; set; }
+            public string UserName { get; set; }
+            public string ExternalAccessToken { get; set; }
+
+            public static ExternalLoginData FromIdentity(ClaimsIdentity identity)
+            {
+                if (identity == null)
+                {
+                    return null;
+                }
+
+                Claim providerKeyClaim = identity.FindFirst(ClaimTypes.NameIdentifier);
+
+                if (providerKeyClaim == null || String.IsNullOrEmpty(providerKeyClaim.Issuer) || String.IsNullOrEmpty(providerKeyClaim.Value))
+                {
+                    return null;
+                }
+
+                if (providerKeyClaim.Issuer == ClaimsIdentity.DefaultIssuer)
+                {
+                    return null;
+                }
+
+                return new ExternalLoginData
+                {
+                    LoginProvider = providerKeyClaim.Issuer,
+                    ProviderKey = providerKeyClaim.Value,
+                    UserName = identity.FindFirstValue(ClaimTypes.Name),
+                    ExternalAccessToken = identity.FindFirstValue("urn:facebook:access_token"),
+                };
+            }
+        }
+
         #endregion
     }
 }

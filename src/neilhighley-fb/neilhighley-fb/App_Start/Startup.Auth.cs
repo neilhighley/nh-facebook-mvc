@@ -1,9 +1,13 @@
 ﻿using System;
 using System.Configuration;
+using System.Management.Instrumentation;
+using System.Security.Claims;
+using System.Threading.Tasks;
 using Microsoft.AspNet.Identity;
 using Microsoft.AspNet.Identity.Owin;
 using Microsoft.Owin;
 using Microsoft.Owin.Security.Cookies;
+using Microsoft.Owin.Security.Facebook;
 using Microsoft.Owin.Security.Google;
 using Owin;
 using neilhighley_fb.Models;
@@ -46,18 +50,58 @@ namespace neilhighley_fb
             // This is similar to the RememberMe option when you log in.
             app.UseTwoFactorRememberBrowserCookie(DefaultAuthenticationTypes.TwoFactorRememberBrowserCookie);
 
-            
-            /* Facebook Auth is in separate non-git config file
-             * <?xml version="1.0"?>
-              <appSettings>
-                <add key="Facebook:AppId" value="xxxxxx" />
-                <add key="Facebook:AppSecret" value="xxxxxx" />
-                <add key="Facebook:AppNamespace" value="" />
-              </appSettings>
-            */
-            app.UseFacebookAuthentication(
-                appId: ConfigurationManager.AppSettings["Facebook:AppId"].ToString(),
-                appSecret: ConfigurationManager.AppSettings["Facebook:AppSecret"].ToString());
+            string XmlSchemaString = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims";
+            if (ConfigurationManager.AppSettings.Get("Facebook:AppId").Length > 0)
+            {
+                /* Facebook Auth is in separate non-git config file
+            * <?xml version="1.0"?>
+             <appSettings>
+               <add key="Facebook:AppId" value="xxxxxx" />
+               <add key="Facebook:AppSecret" value="xxxxxx" />
+               <add key="Facebook:AppNamespace" value="" />
+             </appSettings>
+           */
+
+                var facebookOptions = new Microsoft.Owin.Security.Facebook.FacebookAuthenticationOptions()
+                {
+                    AppId = ConfigurationManager.AppSettings.Get("Facebook:AppId"),
+                    AppSecret = ConfigurationManager.AppSettings.Get("Facebook:AppSecret"),
+                    Provider = new FacebookAuthenticationProvider()
+                    {
+                        OnAuthenticated = (context) =>
+                        {
+                            var c = context as FacebookAuthenticatedContext;
+                            c.Identity.AddClaim(new System.Security.Claims.Claim("urn:facebook:access_token",
+                                c.AccessToken, XmlSchemaString, "Facebook"));
+                            //  context.Identity.AddClaim(new System.Security.Claims.Claim("urn:facebook:email", context.Email, XmlSchemaString, "Facebook"));
+                            foreach (var x in c.User)
+                            {
+                                var claimType = string.Format("urn:facebook:{0}", x.Key);
+                                string claimValue = x.Value.ToString();
+                                if (!c.Identity.HasClaim(claimType, claimValue))
+                                    c.Identity.AddClaim(new System.Security.Claims.Claim(claimType, claimValue,
+                                        XmlSchemaString, "Facebook"));
+
+                            }
+
+                            return Task.FromResult(0);
+                        }
+                    }
+
+                };
+                var scopes = new[] { "user_status", "email", "user_friends", "user_about_me", "read_stream", "publish_actions" };
+                foreach (var s in scopes)
+                {
+                    facebookOptions.Scope.Add(s);
+                }
+
+
+                app.UseFacebookAuthentication(facebookOptions);
+
+            }
+
         }
     }
+   
+        
 }

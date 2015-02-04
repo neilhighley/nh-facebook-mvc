@@ -11,6 +11,7 @@ namespace neilhighley_fb.Models
 
         public string HomeTown { get; set; }
         public System.DateTime? BirthDate { get; set; }
+        public string access_token { get; set; }
     }
 
     public class ExternalLoginListViewModel
